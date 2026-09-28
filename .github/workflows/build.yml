@@ -20,6 +20,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           ZIP="Spectra-Android-Native.zip"
 
           if [ ! -f "$ZIP" ]; then
@@ -32,6 +33,7 @@ jobs:
           unzip -q "$ZIP" -d _spectra_build
 
           PROJECT_DIR="$(find _spectra_build -type f -name settings.gradle.kts -printf '%h\n' | head -n 1)"
+
           if [ -z "$PROJECT_DIR" ]; then
             echo "Could not find settings.gradle.kts inside the ZIP."
             exit 1
@@ -47,14 +49,14 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
 
       - name: Install Android SDK, NDK, and CMake
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager \
-            "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0" \
             "ndk;27.2.12479018" \
