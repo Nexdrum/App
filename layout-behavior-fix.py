@@ -8,10 +8,11 @@ base = Path(sys.argv[1]) / 'app/src/main/java/com/sonolume/spectra'
 ui = base / 'ui'
 
 # Keep the transport/menu pinned at the top while the selected track body scrolls.
+# Also respect Android's status-bar safe area so the title/orb are not drawn under it.
 p = base / 'MainActivity.kt'
 s = p.read_text()
 s = s.replace('import androidx.compose.foundation.layout.fillMaxSize\n',
-              'import androidx.compose.foundation.layout.fillMaxSize\nimport androidx.compose.foundation.rememberScrollState\nimport androidx.compose.foundation.verticalScroll\n')
+              'import androidx.compose.foundation.layout.fillMaxSize\nimport androidx.compose.foundation.rememberScrollState\nimport androidx.compose.foundation.verticalScroll\nimport androidx.compose.foundation.layout.statusBarsPadding\n')
 old = '''@Composable
 private fun DawApp(vm: DawViewModel, onExport: () -> Unit, onImport: () -> Unit) {
     val ui = vm.collectUi()
@@ -34,7 +35,7 @@ new = '''@Composable
 private fun DawApp(vm: DawViewModel, onExport: () -> Unit, onImport: () -> Unit) {
     val ui = vm.collectUi()
     val bodyScroll = rememberScrollState()
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Transport(vm, onExport, onImport)
         Column(
             Modifier
