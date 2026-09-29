@@ -9,6 +9,7 @@ on:
       - 'compact-ui-fix.py'
       - 'layout-behavior-fix.py'
       - 'mobile-polish-fix.py'
+      - 'spectrachord-grid-fix.py'
       - 'spectra-launcher.webp'
       - '.github/workflows/build.yml'
 
@@ -62,6 +63,9 @@ jobs:
 
           echo "Applying final phone layout polish..."
           python3 "$GITHUB_WORKSPACE/mobile-polish-fix.py" "$PROJECT_DIR"
+
+          echo "Fixing Spectrachord grid rendering..."
+          python3 "$GITHUB_WORKSPACE/spectrachord-grid-fix.py" "$PROJECT_DIR"
 
           echo "Installing final Spectra launcher icon..."
           ICON_RES="$PROJECT_DIR/app/src/main/res"
