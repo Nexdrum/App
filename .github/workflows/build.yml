@@ -9,7 +9,7 @@ on:
       - 'compact-ui-fix.py'
       - 'layout-behavior-fix.py'
       - 'mobile-polish-fix.py'
-      - 'spectrachord-host-fix.py'
+      - 'native-spectrachord.kt.gz.b64'
       - 'spectra-launcher.webp'
       - '.github/workflows/build.yml'
 
@@ -64,8 +64,9 @@ jobs:
           echo "Applying final phone layout polish..."
           python3 "$GITHUB_WORKSPACE/mobile-polish-fix.py" "$PROJECT_DIR"
 
-          echo "Restoring known-good Spectrachord WebView host..."
-          python3 "$GITHUB_WORKSPACE/spectrachord-host-fix.py" "$PROJECT_DIR"
+          echo "Installing native Compose Spectrachord instrument..."
+          INSTRUMENTS="$PROJECT_DIR/app/src/main/java/com/sonolume/spectra/ui/Instruments.kt"
+          base64 -d "$GITHUB_WORKSPACE/native-spectrachord.kt.gz.b64" | gzip -dc > "$INSTRUMENTS"
 
           echo "Installing final Spectra launcher icon..."
           ICON_RES="$PROJECT_DIR/app/src/main/res"
