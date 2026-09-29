@@ -1,0 +1,225 @@
+diff -ruN pristine/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/Common.kt composefix/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/Common.kt
+--- pristine/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/Common.kt	2026-09-29 13:28:10.000000000 +0000
++++ composefix/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/Common.kt	2026-09-29 15:26:23.369665373 +0000
+@@ -84,6 +84,11 @@
+ }
+ 
+ @Composable
++fun SmallBtn(text: String, warn: Boolean = false, on: Boolean = false, onClick: () -> Unit) {
++    SmallBtn(text, onClick, warn, on)
++}
++
++@Composable
+ fun ToggleBtn(text: String, on: Boolean, onClick: () -> Unit) {
+     SmallBtn(text, onClick, on = on)
+ }
+diff -ruN pristine/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/DrumScreen.kt composefix/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/DrumScreen.kt
+--- pristine/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/DrumScreen.kt	2026-09-29 13:28:10.000000000 +0000
++++ composefix/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/DrumScreen.kt	2026-09-29 15:26:23.369977745 +0000
+@@ -20,6 +20,7 @@
+ import com.sonolume.spectra.daw.SNARES
+ import com.sonolume.spectra.daw.barLen
+ import com.sonolume.spectra.daw.beatLen
++import com.sonolume.spectra.daw.gridSteps
+ import com.sonolume.spectra.daw.drumKind
+ import com.sonolume.spectra.daw.drumKindLetter
+ import com.sonolume.spectra.daw.drumZoneName
+diff -ruN pristine/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/NebScreen.kt composefix/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/NebScreen.kt
+--- pristine/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/NebScreen.kt	2026-09-29 13:28:10.000000000 +0000
++++ composefix/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/NebScreen.kt	2026-09-29 15:26:23.369816391 +0000
+@@ -24,6 +24,7 @@
+ import com.sonolume.spectra.daw.NebNote
+ import com.sonolume.spectra.daw.barLen
+ import com.sonolume.spectra.daw.beatLen
++import com.sonolume.spectra.daw.gridSteps
+ import com.sonolume.spectra.daw.drumZoneName
+ import com.sonolume.spectra.daw.midiName
+ import com.sonolume.spectra.daw.PITCH_COLORS
+diff -ruN pristine/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/PianoRoll.kt composefix/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/PianoRoll.kt
+--- pristine/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/PianoRoll.kt	2026-09-29 13:53:03.000000000 +0000
++++ composefix/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/PianoRoll.kt	2026-09-29 15:26:23.370122303 +0000
+@@ -2,7 +2,9 @@
+ 
+ import androidx.compose.foundation.Canvas
+ import androidx.compose.foundation.ScrollState
++import androidx.compose.foundation.gestures.awaitEachGesture
+ import androidx.compose.foundation.gestures.awaitFirstDown
++import androidx.compose.foundation.gestures.scrollBy
+ import androidx.compose.foundation.horizontalScroll
+ import androidx.compose.foundation.layout.Box
+ import androidx.compose.foundation.layout.size
+@@ -20,7 +22,6 @@
+ import androidx.compose.ui.graphics.drawscope.DrawScope
+ import androidx.compose.ui.graphics.drawscope.Stroke
+ import androidx.compose.ui.input.pointer.PointerEventPass
+-import androidx.compose.ui.input.pointer.awaitPointerEventScope
+ import androidx.compose.ui.input.pointer.changedToUp
+ import androidx.compose.ui.input.pointer.pointerInput
+ import androidx.compose.ui.text.TextMeasurer
+@@ -31,9 +32,6 @@
+ import androidx.compose.ui.unit.dp
+ import androidx.compose.ui.unit.sp
+ import com.sonolume.spectra.daw.LinePt
+-import kotlinx.coroutines.Job
+-import kotlinx.coroutines.delay
+-import kotlinx.coroutines.launch
+ 
+ data class Cell(val s: Int, val midi: Int, val half: Int = -1)
+ 
+@@ -154,11 +152,9 @@
+                     height = 22.dp + cellDp * rows.size
+                 )
+                 .pointerInput(hScroll, vScroll) {
+-                    val scope = this
+                     var lastTapAt = 0L
+                     var lastTapKey: Any? = null
+                     awaitEachGestureWrapper(
+-                        scope,
+                         hScroll, vScroll, labelDp, cellDp,
+                         { latestHalfMode },
+                         { latestRows }, { latestSteps }, { latestLine },
+@@ -183,7 +179,7 @@
+             val headerH = 22.dp.toPx()
+             val cell = cellDp.toPx()
+             val g = RollGeometry(labelW, headerH, cell, rows, steps)
+-            drawRollBase(this, measurer, g, labelFor, labelColorFor, beatLen, barLen)
++            drawRollBase(measurer, g, labelFor, labelColorFor, beatLen, barLen)
+             for (r in rows.indices) {
+                 val midi = rows[r]
+                 for (s in 0 until steps) {
+@@ -192,16 +188,15 @@
+                     val isSel = selected(s, midi)
+                     val isPlay = playing && s == playStep
+                     if (kind == KIND_NONE && !isGhost && !isSel && !isPlay) continue
+-                    drawRollCell(this, g, Cell(s, midi), kind, pitchColor(midi), specMode, isSel, isGhost, isPlay)
++                    drawRollCell(g, Cell(s, midi), kind, pitchColor(midi), specMode, isSel, isGhost, isPlay)
+                 }
+             }
+-            if (line != null) drawLineOverlay(this, g, line)
++            if (line != null) drawLineOverlay(g, line)
+         }
+     }
+ }
+ 
+ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.awaitEachGestureWrapper(
+-    scope: kotlinx.coroutines.CoroutineScope,
+     hScroll: ScrollState,
+     vScroll: ScrollState,
+     labelDp: Dp,
+@@ -225,7 +220,7 @@
+     tapMemory: () -> Pair<Long, Any?>,
+     saveTap: (Long, Any?) -> Unit
+ ) {
+-    androidx.compose.foundation.gestures.awaitEachGesture {
++    awaitEachGesture {
+         val rows = rowsGetter()
+         val steps = stepsGetter()
+         val line = lineGetter()
+@@ -253,21 +248,19 @@
+             }
+             latestPointDownGetter()(phit)
+             var pointMoved = false
+-            awaitPointerEventScope {
+-                while (true) {
+-                    val ev = awaitPointerEvent(PointerEventPass.Main)
+-                    if (ev.changes.size >= 2) break
+-                    val change = ev.changes.firstOrNull() ?: break
+-                    if (change.changedToUp()) {
+-                        change.consume()
+-                        break
+-                    }
+-                    if ((change.position - change.previousPosition).getDistance() > 2f) pointMoved = true
+-                    val ln = lineGetter() ?: break
+-                    val (t, v) = lineXYToTV(g, ln, change.position, cell)
+-                    latestPointMoveGetter()(t, v)
++            while (true) {
++                val ev = awaitPointerEvent(PointerEventPass.Main)
++                if (ev.changes.size >= 2) break
++                val change = ev.changes.firstOrNull() ?: break
++                if (change.changedToUp()) {
+                     change.consume()
++                    break
+                 }
++                if ((change.position - change.previousPosition).getDistance() > 2f) pointMoved = true
++                val ln = lineGetter() ?: break
++                val (t, v) = lineXYToTV(g, ln, change.position, cell)
++                latestPointMoveGetter()(t, v)
++                change.consume()
+             }
+             latestPointUpGetter()()
+             if (!pointMoved) saveTap(pointNow, pointKey)
+@@ -293,40 +286,34 @@
+         var dragOn = false
+         var moved = false
+         var longFired = false
+-        var lpJob: Job? = scope.launch {
+-            delay(450)
+-            longFired = true
+-            latestLongGetter()(cellHit)
+-        }
+-        awaitPointerEventScope {
+-            while (true) {
+-                val ev = awaitPointerEvent(PointerEventPass.Main)
+-                if (ev.changes.size >= 2) {
+-                    lpJob?.cancel()
+-                    panTwoFinger(hScroll, vScroll)
+-                    moved = true
++        while (true) {
++            val ev = awaitPointerEvent(PointerEventPass.Main)
++            if (ev.changes.size >= 2) {
++                panTwoFinger(hScroll, vScroll)
++                moved = true
++                longFired = true
++                break
++            }
++            val change = ev.changes.firstOrNull() ?: break
++            if (change.changedToUp()) {
++                change.consume()
++                if (!moved && System.currentTimeMillis() - now >= 450L) {
+                     longFired = true
+-                    break
++                    latestLongGetter()(cellHit)
+                 }
+-                val change = ev.changes.firstOrNull() ?: break
+-                if (change.changedToUp()) {
+-                    change.consume()
+-                    break
+-                }
+-                val d = (change.position - change.previousPosition).getDistance()
+-                if (d > 2f) {
+-                    lpJob?.cancel()
+-                    if (!dragOn) dragOn = latestDragStartGetter()(cellHit)
+-                    val c2 = g.cellAt(change.position.x, change.position.y, halfMode)
+-                    if (c2 != null) {
+-                        if (dragOn) latestDragMoveGetter()(c2)
+-                        moved = true
+-                    }
+-                    change.consume()
++                break
++            }
++            val d = (change.position - change.previousPosition).getDistance()
++            if (d > 2f) {
++                if (!dragOn) dragOn = latestDragStartGetter()(cellHit)
++                val c2 = g.cellAt(change.position.x, change.position.y, halfMode)
++                if (c2 != null) {
++                    if (dragOn) latestDragMoveGetter()(c2)
++                    moved = true
+                 }
++                change.consume()
+             }
+         }
+-        lpJob?.cancel()
+         if (dragOn) {
+             latestDragEndGetter()(moved)
+         } else if (!moved && !longFired) {
+diff -ruN pristine/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/SpecScreen.kt composefix/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/SpecScreen.kt
+--- pristine/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/SpecScreen.kt	2026-09-29 13:28:10.000000000 +0000
++++ composefix/Spectra-Android-Native/app/src/main/java/com/sonolume/spectra/ui/SpecScreen.kt	2026-09-29 15:26:23.369890062 +0000
+@@ -28,6 +28,7 @@
+ import com.sonolume.spectra.daw.SpecNote
+ import com.sonolume.spectra.daw.barLen
+ import com.sonolume.spectra.daw.beatLen
++import com.sonolume.spectra.daw.gridSteps
+ import com.sonolume.spectra.daw.midiName
+ import com.sonolume.spectra.daw.PITCH_COLORS
+ import com.sonolume.spectra.daw.velWord

@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - 'Spectra-Android-Native.zip'
+      - 'compose-compile-fix.patch'
       - '.github/workflows/build.yml'
 
 jobs:
@@ -37,6 +38,12 @@ jobs:
           if [ -z "$PROJECT_DIR" ]; then
             echo "Could not find settings.gradle.kts inside the ZIP."
             exit 1
+          fi
+
+          PATCH="$GITHUB_WORKSPACE/compose-compile-fix.patch"
+          if [ -f "$PATCH" ]; then
+            echo "Applying Compose compile fixes..."
+            patch --batch -d "$PROJECT_DIR" -p2 < "$PATCH"
           fi
 
           echo "Found Android project at: $PROJECT_DIR"
