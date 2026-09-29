@@ -10,6 +10,7 @@ on:
       - 'layout-behavior-fix.py'
       - 'mobile-polish-fix.py'
       - 'native-spectrachord.parts/**'
+      - 'spectrachord-slide-fix.py'
       - 'spectra-launcher.webp'
       - '.github/workflows/build.yml'
 
@@ -67,6 +68,9 @@ jobs:
           echo "Installing native Compose Spectrachord instrument..."
           INSTRUMENTS="$PROJECT_DIR/app/src/main/java/com/sonolume/spectra/ui/Instruments.kt"
           cat "$GITHUB_WORKSPACE"/native-spectrachord.parts/*.b64 | base64 -d | gzip -dc > "$INSTRUMENTS"
+
+          echo "Restoring Spectrachord slide-through-blackout behavior..."
+          python3 "$GITHUB_WORKSPACE/spectrachord-slide-fix.py" "$PROJECT_DIR"
 
           echo "Installing final Spectra launcher icon..."
           ICON_RES="$PROJECT_DIR/app/src/main/res"
