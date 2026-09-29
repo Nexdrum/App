@@ -9,7 +9,6 @@ on:
       - 'compact-ui-fix.py'
       - 'layout-behavior-fix.py'
       - 'mobile-polish-fix.py'
-      - 'spectra-icon.b64'
       - '.github/workflows/build.yml'
 
 jobs:
@@ -62,19 +61,6 @@ jobs:
 
           echo "Applying final phone layout polish..."
           python3 "$GITHUB_WORKSPACE/mobile-polish-fix.py" "$PROJECT_DIR"
-
-          echo "Installing final Spectra launcher icon..."
-          ICON_RES="$PROJECT_DIR/app/src/main/res"
-          mkdir -p "$ICON_RES/drawable" "$ICON_RES/mipmap-anydpi-v26"
-          base64 -d "$GITHUB_WORKSPACE/spectra-icon.b64" > "$ICON_RES/drawable/ic_launcher_art.webp"
-          cat > "$ICON_RES/mipmap-anydpi-v26/ic_launcher.xml" <<'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-              <background android:drawable="@drawable/ic_spectra_background" />
-              <foreground android:drawable="@drawable/ic_launcher_art" />
-          </adaptive-icon>
-          EOF
-          cp "$ICON_RES/mipmap-anydpi-v26/ic_launcher.xml" "$ICON_RES/mipmap-anydpi-v26/ic_launcher_round.xml"
 
           echo "Found Android project at: $PROJECT_DIR"
           echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
