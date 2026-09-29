@@ -6,6 +6,7 @@ on:
     paths:
       - 'Spectra-Android-Native.zip'
       - 'compose-compile-fix.patch'
+      - 'compact-ui-fix.py'
       - '.github/workflows/build.yml'
 
 jobs:
@@ -49,6 +50,9 @@ jobs:
           PIANO_ROLL="$PROJECT_DIR/app/src/main/java/com/sonolume/spectra/ui/PianoRoll.kt"
           sed -i 's/hScroll\.scrollBy(dx \/ n)/hScroll.dispatchRawDelta(dx \/ n)/' "$PIANO_ROLL"
           sed -i 's/vScroll\.scrollBy(dy \/ n)/vScroll.dispatchRawDelta(dy \/ n)/' "$PIANO_ROLL"
+
+          echo "Applying compact phone UI and pitch-grid colors..."
+          python3 "$GITHUB_WORKSPACE/compact-ui-fix.py" "$PROJECT_DIR"
 
           echo "Found Android project at: $PROJECT_DIR"
           echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
