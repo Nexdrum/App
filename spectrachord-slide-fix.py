@@ -11,34 +11,41 @@ if not p.exists():
 
 s = p.read_text(encoding='utf-8')
 
-old = '''                                val prev = pointerCells[id]
-                                if (prev != cell) {
-                                    val base = pointerBase(id)
-                                    if (prev != null) stop(base)
-                                    if (canPlay(cell)) {
-                                        start(cell, base)
-                                        pointerCells[id] = cell
-                                    } else {
-                                        pointerCells.remove(id)
-                                    }
-                                }
+old = '''                              } else if (change.pressed && change.previousPressed && !hold) {
+                                  val prev = pointerCells[id]
+                                  if (!inside) {
+                                      if (prev != null) stop(pointerBase(id))
+                                      pointerCells.remove(id)
+                                  } else if (prev != cell) {
+                                      val base = pointerBase(id)
+                                      if (prev != null) stop(base)
+                                      if (canPlay(cell)) {
+                                          start(cell, base)
+                                          pointerCells[id] = cell
+                                      } else {
+                                          pointerCells.remove(id)
+                                      }
+                                  }
 '''
 
-new = '''                                val prev = pointerCells[id]
-                                // Blacked-out cells are transparent to a slide gesture.
-                                // Keep the last playable chord sounding until the finger
-                                // actually reaches another playable square. This prevents
-                                // gaps when gliding across a filtered scale.
-                                if (prev != cell && canPlay(cell)) {
-                                    val base = pointerBase(id)
-                                    if (prev != null) stop(base)
-                                    start(cell, base)
-                                    pointerCells[id] = cell
-                                }
+new = '''                              } else if (change.pressed && change.previousPressed && !hold) {
+                                  val prev = pointerCells[id]
+                                  if (!inside) {
+                                      if (prev != null) stop(pointerBase(id))
+                                      pointerCells.remove(id)
+                                  } else if (prev != cell && canPlay(cell)) {
+                                      // A blacked-out cell does NOT interrupt a glide.
+                                      // Keep the last playable chord sounding until the
+                                      // pointer reaches another playable square.
+                                      val base = pointerBase(id)
+                                      if (prev != null) stop(base)
+                                      start(cell, base)
+                                      pointerCells[id] = cell
+                                  }
 '''
 
 if old not in s:
-    raise SystemExit('Spectrachord slide-handler anchor not found; source layout changed')
+    raise SystemExit('Spectrachord zoom-grid slide-handler anchor not found')
 
 s = s.replace(old, new, 1)
 p.write_text(s, encoding='utf-8')
