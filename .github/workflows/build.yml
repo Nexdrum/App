@@ -13,6 +13,7 @@ on:
       - 'spectrachord-slide-fix.py'
       - 'native-nebular.parts/**'
       - 'native-nebular-route.py'
+      - 'native-nebular-compile-fix.py'
       - 'spectra-launcher.webp'
       - '.github/workflows/build.yml'
 
@@ -78,6 +79,9 @@ jobs:
           NEBULAR="$PROJECT_DIR/app/src/main/java/com/sonolume/spectra/ui/NativeNebular.kt"
           cat "$GITHUB_WORKSPACE"/native-nebular.parts/*.b64 | base64 -d | gzip -dc > "$NEBULAR"
           python3 "$GITHUB_WORKSPACE/native-nebular-route.py" "$PROJECT_DIR"
+
+          echo "Fixing native Nebular Kotlin slider range..."
+          python3 "$GITHUB_WORKSPACE/native-nebular-compile-fix.py" "$PROJECT_DIR"
 
           echo "Installing final Spectra launcher icon..."
           ICON_RES="$PROJECT_DIR/app/src/main/res"
