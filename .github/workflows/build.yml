@@ -115,6 +115,7 @@ jobs:
 
           mkdir -p /tmp/spectra-final
           rsync -a \
+            --exclude '.github/' \
             --exclude '.gradle/' \
             --exclude '.idea/' \
             --exclude 'local.properties' \
