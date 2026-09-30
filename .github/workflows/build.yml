@@ -15,6 +15,8 @@ on:
       - 'native-nebular-route.py'
       - 'native-nebular-compile-fix.py'
       - 'native-nebular-final.b64'
+      - 'native-nexdrum.kt.gz.b64'
+      - 'native-nexdrum-route.py'
       - 'spectra-launcher.webp'
       - '.github/workflows/build.yml'
 
@@ -80,6 +82,11 @@ jobs:
           NEBULAR="$PROJECT_DIR/app/src/main/java/com/sonolume/spectra/ui/NativeNebular.kt"
           base64 -d "$GITHUB_WORKSPACE/native-nebular-final.b64" | gzip -dc > "$NEBULAR"
           python3 "$GITHUB_WORKSPACE/native-nebular-route.py" "$PROJECT_DIR"
+
+          echo "Installing native Compose Nexdrum instrument..."
+          NEXDRUM="$PROJECT_DIR/app/src/main/java/com/sonolume/spectra/ui/NativeNexdrum.kt"
+          base64 -d "$GITHUB_WORKSPACE/native-nexdrum.kt.gz.b64" | gzip -dc > "$NEXDRUM"
+          python3 "$GITHUB_WORKSPACE/native-nexdrum-route.py" "$PROJECT_DIR"
 
           echo "Installing final Spectra launcher icon..."
           ICON_RES="$PROJECT_DIR/app/src/main/res"
