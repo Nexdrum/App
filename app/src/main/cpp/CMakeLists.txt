@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(spectra_native)
+find_package(oboe REQUIRED CONFIG)
+add_library(spectra_native SHARED native-lib.cpp AudioEngine.cpp DspCore.cpp)
+target_include_directories(spectra_native PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(spectra_native oboe::oboe android log)
+target_compile_options(spectra_native PRIVATE -O3 -ffast-math -fno-exceptions)

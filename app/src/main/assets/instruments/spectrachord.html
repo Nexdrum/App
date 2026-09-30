@@ -1,0 +1,1471 @@
+<script>
+(function(){
+  function send(o){try{if(window.InstrumentNative&&typeof window.InstrumentNative.postMessage==="function")window.InstrumentNative.postMessage(JSON.stringify(o));}catch(_){}}
+  window.SpectraAudio={
+    ctx:{get currentTime(){return performance.now()/1000;}},
+    ensure(){send({type:"ensure"});},
+    applyNebFX(fx){send({type:"nebFx",fx:fx||{}});},
+    applySpecFX(fx){send({type:"specFx",fx:fx||{}});},
+    drumKickAt(freq,vel,pos){send({type:"drum",kind:"k",freq:+freq||110,vel:+vel||1,pos:+pos||.5});},
+    drumSnareAt(freq,vel,pos){send({type:"drum",kind:"s",freq:+freq||220,vel:+vel||1,pos:+pos||.5});},
+    drumCymbalAt(freq,vel,pos){send({type:"drum",kind:"c",freq:+freq||440,vel:+vel||1,pos:+pos||.5});},
+    liveNebStart(id,midi,level,pressure,mute,cents,volume,pluck,release){send({type:"nebLiveStart",id:+id||0,midi:+midi||60,level:+level||0,pressure:+pressure||0,mute:+mute||0,cents:+cents||0,volume:+volume||0,pluck:!!pluck,release:+release||700});},
+    liveNebUpdate(id,midi,level,pressure,mute,cents,volume){send({type:"nebLiveUpdate",id:+id||0,midi:+midi||60,level:+level||0,pressure:+pressure||0,mute:+mute||0,cents:+cents||0,volume:+volume||0});},
+    liveNebStop(id,release){send({type:"nebLiveStop",id:+id||0,release:+release||700});},
+    liveSpecStart(id,midi,gain,wave){send({type:"specLiveStart",id:+id||0,midi:+midi||60,gain:+gain||0,wave:wave||"square"});},
+    liveSpecStop(id){send({type:"specLiveStop",id:+id||0});},
+    livePanic(){send({type:"livePanic"});}
+  };
+})();
+</script>
+<!-- App Icon -->
+
+
+
+
+
+  
+  
+  
+  
+  <style>
+    body { margin: 0; background: black; font-family: sans-serif; color: white; }
+    #controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 20px;
+      background: #111;
+      padding: 10px;
+      border-bottom: 2px solid #444;
+    }
+    #grid {
+  overflow-x: auto;
+  width: fit-content;
+  margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(25, 60px);
+      justify-content: center;
+      gap: 2px;
+      padding: 20px;
+    }
+    .cell {
+      width: 60px;
+      height: 60px;
+      font-size: 10px;
+      border: 1px solid #444;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      user-select: none;
+      cursor: pointer;
+      background: #333;
+      color: white;
+      text-shadow: 1px 1px 2px black;
+    }
+    .pressed {
+      outline: 2px solid white;
+    }
+    canvas {
+  margin: 20px auto;
+  display: block;
+  background: black;
+}
+  </style>
+
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background-color: black;
+    overflow: hidden;
+  }
+</style>
+
+
+<style>
+  #viewportWrapper,
+  #gridWrapper,
+  #grid {
+    background-color: transparent !important;
+  }
+</style>
+
+
+<style>
+  canvas#bgCanvas { background-color: transparent !important; }
+</style>
+
+
+<script>
+
+let harmonicShadingEnabled = true;
+let harmonicShadingStrength = 1.0;
+const enabledNotes = {
+  'C': true, 'C#': false, 'D': true, 'D#': false, 'E': true,
+  'F': true, 'F#': false, 'G': true, 'G#': false, 'A': true, 'A#': false, 'B': true
+};
+
+
+function toggleNote(note) {
+  enabledNotes[note] = document.getElementById("toggle-" + note).checked;
+  updateGridColors();
+}
+
+function updateNoteFilterVisuals() {
+  document.querySelectorAll('.cell').forEach(cell => {
+    const note1 = cell.dataset.note1;
+    const note2 = cell.dataset.note2;
+    const color = cell.dataset.color;
+    if (!enabledNotes[note1] || !enabledNotes[note2]) {
+      cell.style.backgroundColor = '#111';  // dim
+    } else {
+      cell.style.backgroundColor = color;
+    }
+  });
+}
+
+function getNoteName(midi) {
+  const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  return names[midi % 12];
+}
+
+document.addEventListener('touchend', e => {
+  for (const touch of e.changedTouches) {
+    const target = currentTouchTargets[touch.identifier];
+    if (target && target.dataset.cellId) {
+      stopDual(target.dataset.cellId);
+      delete currentTouchTargets[touch.identifier];
+    }
+  }
+});
+
+document.addEventListener('touchcancel', e => {
+  for (const touch of e.changedTouches) {
+    const target = currentTouchTargets[touch.identifier];
+    if (target && target.dataset.cellId) {
+      stopDual(target.dataset.cellId);
+      delete currentTouchTargets[touch.identifier];
+    }
+  }
+});
+
+</script>
+
+
+
+
+<!-- Unified Top Menu -->
+<div id="topMenu">
+  <div id="menuBar">
+    <div class="spectrachordLogo compact">SPECTRACHORD</div>
+    <div class="menuBtns">
+      <button type="button" data-panel="panel-sound">Sound</button>
+      <button type="button" data-panel="panel-reverb">Reverb</button>
+      <button type="button" data-panel="panel-delay">Delay</button>
+      <button type="button" data-panel="panel-view">View</button>
+      <button type="button" data-panel="panel-notes">Notes</button>
+    </div>
+    <label class="touchQuick"><input type="checkbox" id="touchToggle"> Touch</label>
+  </div>
+  <div id="panelWrap">
+  <div class="menuSection panel" id="panel-sound" hidden>
+    <button type="button" class="panelClose" data-close aria-label="Close menu">x</button>
+    <label>Waveform 1:
+      <select id="waveform1">
+        <option value="sine">Sine</option>
+        <option value="square" selected>Square</option>
+        <option value="sawtooth">Sawtooth</option>
+        <option value="triangle">Triangle</option>
+      </select>
+    </label>
+    <label>Waveform 2:
+      <select id="waveform2">
+        <option value="sine">Sine</option>
+        <option value="square">Square</option>
+        <option value="sawtooth" selected>Sawtooth</option>
+        <option value="triangle">Triangle</option>
+      </select>
+    </label>
+    
+<label><input type="checkbox" id="harmonicShadingToggle" checked> Harmonic Shading</label>
+<label>Shading:
+  <input type="range" id="shadingIntensity" min="0" max="1" step="0.01" value="1.0">
+</label>
+
+    <label>Volume:
+      <input type="range" id="volume" min="0" max="1" step="0.01" value="0.1">
+    </label>
+  </div>
+  <div class="menuSection panel" id="panel-reverb" hidden>
+    <button type="button" class="panelClose" data-close aria-label="Close menu">x</button>
+    <label><input type="checkbox" id="reverbToggle" checked> Reverb</label>
+    <label>Amount: <input id="reverbControl" type="range" min="0" max="1" step="0.01" value="0.3"></label>
+    <label>Room: <input id="roomSizeControl" type="range" min="0.1" max="1" step="0.01" value="0.5"></label>
+  </div>
+  <div class="menuSection panel" id="panel-delay" hidden>
+    <button type="button" class="panelClose" data-close aria-label="Close menu">x</button>
+    <label><input type="checkbox" id="delayToggle" checked> Delay</label>
+    <label>Time: <input id="delayTimeControl" type="range" min="0" max="1" step="0.01" value="0.25"></label>
+    <label>Amount: <input id="delayAmountControl" type="range" min="0" max="1" step="0.01" value="0.4"></label>
+    <label>Feedback: <input id="delayFeedbackControl" type="range" min="0" max="0.95" step="0.01" value="0.3"></label>
+  </div>
+  <div class="menuSection panel" id="panel-view" hidden>
+    <button type="button" class="panelClose" data-close aria-label="Close menu">x</button>
+    <button onclick="zoomIn()">＋</button>
+    <button onclick="zoomOut()">－</button>
+    <button onclick="resetZoom()">Reset</button>
+    <button onclick="shiftOctave(-1)">– Oct</button>
+    <button onclick="shiftOctave(1)">+ Oct</button>
+    <label><input type="checkbox" id="holdToggle"> Hold</label>
+    <div style="font-size:11px;opacity:0.7;">Double-tap grid to refit</div>
+  </div>
+  <div class="menuSection panel" id="panel-notes" hidden>
+    <button type="button" class="panelClose" data-close aria-label="Close menu">x</button>
+    <strong>Note Filter</strong><br>
+    <div style="display:grid; grid-template-columns:repeat(4, auto); gap:4px; font-size:12px;">
+      <label><input type="checkbox" id="toggle-C" checked onchange="toggleNote('C')"> C</label>
+      <label><input type="checkbox" id="toggle-C#" onchange="toggleNote('C#')"> C#</label>
+      <label><input type="checkbox" id="toggle-D" checked onchange="toggleNote('D')"> D</label>
+      <label><input type="checkbox" id="toggle-D#" onchange="toggleNote('D#')"> D#</label>
+      <label><input type="checkbox" id="toggle-E" checked onchange="toggleNote('E')"> E</label>
+      <label><input type="checkbox" id="toggle-F" checked onchange="toggleNote('F')"> F</label>
+      <label><input type="checkbox" id="toggle-F#" onchange="toggleNote('F#')"> F#</label>
+      <label><input type="checkbox" id="toggle-G" checked onchange="toggleNote('G')"> G</label>
+      <label><input type="checkbox" id="toggle-G#" onchange="toggleNote('G#')"> G#</label>
+      <label><input type="checkbox" id="toggle-A" checked onchange="toggleNote('A')"> A</label>
+      <label><input type="checkbox" id="toggle-A#" onchange="toggleNote('A#')"> A#</label>
+      <label><input type="checkbox" id="toggle-B" checked onchange="toggleNote('B')"> B</label>
+    </div>
+  </div>
+  </div>
+</div>
+
+
+<style>
+  .spectrachordLogo {
+    width: 100%;
+    text-align: center;
+    margin: 2px 0 4px;
+    font-size: 30px;
+    line-height: 1.1;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    background: linear-gradient(
+      90deg,
+      rgb(58,255,0),
+      rgb(0,255,236),
+      rgb(0,143,255),
+      rgb(15,0,251),
+      rgb(99,0,190),
+      rgb(110,0,128),
+      rgb(152,0,0),
+      rgb(200,0,0),
+      rgb(243,0,0),
+      rgb(255,120,0),
+      rgb(255,239,0),
+      rgb(170,255,0)
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    text-shadow:
+      0 0 6px rgba(255,255,255,0.15),
+      0 0 12px rgba(255,255,255,0.10),
+      0 0 20px rgba(0,255,255,0.08);
+  }
+
+  #topMenu {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: #111;
+    color: white;
+    z-index: 10000;
+    font-size: 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  }
+  #menuBar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 8px;
+  }
+  .spectrachordLogo.compact {
+    width: auto;
+    margin: 0 4px 0 0;
+    font-size: 16px;
+  }
+  .menuBtns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .menuBtns button {
+    background: #333; color: white; border: 1px solid #666;
+    border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+  }
+  .menuBtns button.active { background: #0a6; border-color: #0f0; }
+  .touchQuick { display: flex; align-items: center; gap: 4px; }
+  #panelWrap { display: flex; justify-content: center; padding: 0 8px; }
+  .menuSection.panel { position: relative; margin: 0 auto 8px; max-width: 640px; width: 100%; padding-right: 26px; box-sizing: border-box; }
+  .menuSection.panel[hidden] { display: none; }
+  .panelClose {
+    position: absolute; top: 2px; right: 4px;
+    background: transparent; color: #aaa; border: none;
+    font-size: 16px; cursor: pointer; padding: 2px 6px;
+  }
+  .panelClose:hover { color: white; }
+  .menuSection.panel select,
+  .menuSection.panel button:not(.panelClose) {
+    background: #333; color: #fff; border: 1px solid #666;
+    border-radius: 6px; padding: 4px 8px; font-size: 12px;
+  }
+  .menuSection.panel option { background: #333; color: #fff; }
+  #gridWrapper.fit #grid { touch-action: pan-x pan-y; }
+  .menuSection {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px;
+    border: 1px solid #333;
+    border-radius: 4px;
+    background: #222;
+  }
+  .menuSection input[type="range"] {
+    width: 80px;
+  }
+  .menuSection select {
+    font-size: 12px;
+  }
+  .menuSection label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+</style>
+
+
+
+
+<div id="gridWrapper" style="margin-top: 200px; width: 100%; height: 100vh; overflow: auto; position: relative;">
+<div id="grid" style="transform: scale(1); transform-origin: top left;"></div>
+<div style="text-align:center;"><canvas id="bgCanvas" width="1500" height="1500"></canvas></div>
+<script>
+
+const intervalVisualControl = {
+  0: { minB: 220, maxB: 255, minS: 0.90, maxS: 1.00 },  // Unison
+  1: { minB: 30,  maxB: 70,  minS: 0.20, maxS: 0.35 },  // Minor Second
+  2: { minB: 70,  maxB: 110, minS: 0.30, maxS: 0.50 },  // Major Second
+  3: { minB: 100, maxB: 130, minS: 0.40, maxS: 0.60 },  // Minor Third
+  4: { minB: 110, maxB: 150, minS: 0.45, maxS: 0.65 },  // Major Third
+  5: { minB: 140, maxB: 180, minS: 0.55, maxS: 0.75 },  // Perfect Fourth
+  6: { minB: 60,  maxB: 90,  minS: 0.25, maxS: 0.40 },  // Tritone
+  7: { minB: 200, maxB: 240, minS: 0.85, maxS: 1.00 },  // Perfect Fifth
+  8: { minB: 100, maxB: 130, minS: 0.45, maxS: 0.65 },  // Minor Sixth
+  9: { minB: 110, maxB: 150, minS: 0.50, maxS: 0.70 },  // Major Sixth
+  10:{ minB: 80,  maxB: 120, minS: 0.35, maxS: 0.55 },  // Minor Seventh
+  11:{ minB: 60,  maxB: 100, minS: 0.30, maxS: 0.50 }   // Major Seventh
+};
+
+const noteToColor = {"A": [255, 50, 10], "A#": [255, 236, 0], "B": [153, 255, 0], "C": [40, 255, 0], "C#": [0, 255, 232], "D": [0, 124, 255], "D#": [5, 0, 255], "E": [69, 0, 234], "F": [85, 0, 79], "F#": [140, 0, 0], "G": [180, 10, 0], "G#": [230, 30, 0]};
+
+function midiToNoteName(midi) {
+  const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  const note = names[midi % 12];
+  const octave = Math.floor(midi / 12) - 1;
+  return note + octave;
+}
+
+const canvas = document.getElementById('bgCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = 1500;
+canvas.height = 1500;
+
+
+function blendColorsRaw(colors) {
+  let r = colors.reduce((a, c) => a + c[0], 0);
+  let g = colors.reduce((a, c) => a + c[1], 0);
+  let b = colors.reduce((a, c) => a + c[2], 0);
+  return 'rgb(' + Math.min(255, r) + ',' + Math.min(255, g) + ',' + Math.min(255, b) + ')';
+}
+
+function blendColors(colors, note1, note2) {
+  let r = Math.min(255, colors.reduce((a, c) => a + c[0], 0));
+  let g = Math.min(255, colors.reduce((a, c) => a + c[1], 0));
+  let b = Math.min(255, colors.reduce((a, c) => a + c[2], 0));
+
+
+  if (harmonicShadingEnabled) {
+    const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    const idx1 = names.indexOf(note1);
+    const idx2 = names.indexOf(note2);
+    const interval = Math.abs(idx2 - idx1) % 12;
+
+    const control = intervalVisualControl[interval] || { minB: 0, maxB: 255, minS: 0, maxS: 1 };
+
+    let brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+    let brightnessScale = 1;
+    if (brightness < control.minB) {
+      brightnessScale = control.minB / brightness;
+    } else if (brightness > control.maxB) {
+      brightnessScale = control.maxB / brightness;
+    }
+    brightnessScale = 1 + (brightnessScale - 1) * harmonicShadingStrength;
+    r *= brightnessScale;
+    g *= brightnessScale;
+    b *= brightnessScale;
+
+    const maxRGB = Math.max(r, g, b);
+    const minRGB = Math.min(r, g, b);
+    let saturation = (maxRGB - minRGB) / (maxRGB || 1);
+    let targetS = Math.max(control.minS, Math.min(control.maxS, saturation));
+    if (saturation !== 0 && saturation !== targetS) {
+      const gray = (r + g + b) / 3;
+      let ratio = targetS / saturation;
+      ratio = 1 + (ratio - 1) * harmonicShadingStrength;
+      r = gray + (r - gray) * ratio;
+      g = gray + (g - gray) * ratio;
+      b = gray + (b - gray) * ratio;
+    }
+  }
+
+  const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  const idx1 = names.indexOf(note1);
+  const idx2 = names.indexOf(note2);
+  const interval = Math.abs(idx2 - idx1) % 12;
+
+  const control = intervalVisualControl[interval] || { minB: 0, maxB: 255, minS: 0, maxS: 1 };
+
+  // Perceived brightness
+  let brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+  let brightnessScale = 1;
+  if (brightness < control.minB) {
+    brightnessScale = control.minB / brightness;
+  } else if (brightness > control.maxB) {
+    brightnessScale = control.maxB / brightness;
+  }
+  brightnessScale = 1 + (brightnessScale - 1) * harmonicShadingStrength;
+    r *= brightnessScale;
+  g *= brightnessScale;
+  b *= brightnessScale;
+
+  // Saturation
+  const maxRGB = Math.max(r, g, b);
+  const minRGB = Math.min(r, g, b);
+  let saturation = (maxRGB - minRGB) / (maxRGB || 1);
+  let targetS = Math.max(control.minS, Math.min(control.maxS, saturation));
+  if (saturation !== 0 && saturation !== targetS) {
+    const gray = (r + g + b) / 3;
+    const ratio = targetS / saturation;
+    r = gray + (r - gray) * ratio;
+    g = gray + (g - gray) * ratio;
+    b = gray + (b - gray) * ratio;
+  }
+
+  return 'rgb(' + Math.floor(r) + ',' + Math.floor(g) + ',' + Math.floor(b) + ')';
+}
+
+
+
+let bgBlend = null;
+let bgFadeInterval = null;
+
+
+
+function updateGridColors() {
+  document.querySelectorAll('.cell').forEach(cell => {
+    const note1 = cell.dataset.note1;
+    const note2 = cell.dataset.note2;
+    const color1 = noteToColor[note1];
+    const color2 = noteToColor[note2];
+    const blend = harmonicShadingEnabled
+      ? blendColors([color1, color2], note1, note2)
+      : blendColorsRaw([color1, color2]);
+    cell.style.backgroundColor = enabledNotes[note1] && enabledNotes[note2] ? blend : '#111';
+    cell.dataset.color = blend;
+  });
+}
+
+
+
+function drawCircles() {
+  const notes = Array.from(activeNotes.values()).flat();
+  const body = document.body;
+  if (notes.length === 0) {
+    if (!bgFadeInterval) {
+      bgFadeInterval = setInterval(() => {
+        if (!bgBlend) return;
+        const rgb = bgBlend.match(/\d+/g).map(Number);
+        const faded = rgb.map(v => Math.floor(v * 0.9));  // fade 10% per frame
+        bgBlend = 'rgb(' + faded.join(',') + ')';
+        body.style.backgroundColor = bgBlend;
+        if (faded.every(v => v < 10)) {
+          clearInterval(bgFadeInterval);
+          bgFadeInterval = null;
+          body.style.backgroundColor = 'black';
+        }
+      }, 50);
+    }
+    return;
+  }
+  if (bgFadeInterval) {
+    clearInterval(bgFadeInterval);
+    bgFadeInterval = null;
+  }
+  bgBlend = blendColorsRaw(notes);
+  body.style.backgroundColor = bgBlend;
+}
+
+
+const grid = document.getElementById('grid');
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let oscillators = {};
+let activeNotes = new Map();
+
+const scMaster = audioCtx.createGain();
+scMaster.connect(audioCtx.destination);
+const scDelay = audioCtx.createDelay(1.0);
+const scDelayWet = audioCtx.createGain();
+const scFb = audioCtx.createGain();
+scDelay.connect(scFb);
+scFb.connect(scDelay);
+scDelay.connect(scDelayWet);
+scDelayWet.connect(scMaster);
+const scConvolver = audioCtx.createConvolver();
+const scVerbWet = audioCtx.createGain();
+scConvolver.connect(scVerbWet);
+scVerbWet.connect(scMaster);
+function scNoiseBuffer(seconds) {
+  const len = Math.max(1, Math.floor(audioCtx.sampleRate * seconds));
+  const buf = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+  }
+  return buf;
+}
+scConvolver.buffer = scNoiseBuffer(1.5);
+function scPick(panelSel, id) {
+  let el = null;
+  try { el = document.querySelector(panelSel + ' [id="' + id + '"]'); } catch (_) {}
+  return el || document.getElementById(id);
+}
+function scUpdateFX() {
+  const dT = scPick('#panel-delay', 'delayToggle');
+  const dTi = scPick('#panel-delay', 'delayTimeControl');
+  const dA = scPick('#panel-delay', 'delayAmountControl');
+  const dF = scPick('#panel-delay', 'delayFeedbackControl');
+  const rT = scPick('#panel-reverb', 'reverbToggle');
+  const rA = scPick('#panel-reverb', 'reverbControl');
+  const rS = scPick('#panel-reverb', 'roomSizeControl');
+  const delayOn = dT ? dT.checked : true;
+  const reverbOn = rT ? rT.checked : true;
+  scDelay.delayTime.value = dTi ? (parseFloat(dTi.value) || 0.25) : 0.25;
+  scDelayWet.gain.value = delayOn ? (dA ? (parseFloat(dA.value) || 0) : 0.4) : 0;
+  scFb.gain.value = delayOn ? (dF ? (parseFloat(dF.value) || 0) : 0.3) : 0;
+  scVerbWet.gain.value = reverbOn ? (rA ? (parseFloat(rA.value) || 0) : 0.3) : 0;
+  const room = rS ? (parseFloat(rS.value) || 0.5) : 0.5;
+  if (Math.abs(room - (scUpdateFX._room === undefined ? -1 : scUpdateFX._room)) > 0.01) {
+    scUpdateFX._room = room;
+    scConvolver.buffer = scNoiseBuffer(0.3 + room * 2.5);
+  }
+}
+try {
+  const ids = ['delayToggle','delayTimeControl','delayAmountControl','delayFeedbackControl','reverbToggle','reverbControl','roomSizeControl'];
+  ids.forEach(function(id) {
+    document.querySelectorAll('input[id="' + id + '"]').forEach(function(el) {
+      el.addEventListener('input', scUpdateFX);
+    });
+  });
+} catch (_) {}
+scUpdateFX();
+window.scProbe = { master: scMaster, delayWet: scDelayWet, verbWet: scVerbWet, delay: scDelay };
+function midiToFreq(midi) {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function playDual(id, midi1, midi2, color1, color2) {
+  const note1name = getNoteName(midi1);
+  const note2name = getNoteName(midi2);
+  if (!enabledNotes[note1name] || !enabledNotes[note2name]) {
+    console.log("Note skipped:", note1name, note2name);
+    return;
+  }
+  midi1 += (octaveOffset * 12);
+  midi2 += (octaveOffset * 12);
+  const waveform1 = document.getElementById('waveform1').value;
+  const waveform2 = document.getElementById('waveform2').value;
+  const volume = parseFloat(document.getElementById('volume').value);
+
+  const o1 = audioCtx.createOscillator();
+  const g1 = audioCtx.createGain();
+  o1.type = waveform1;
+  o1.frequency.value = midiToFreq(midi1);
+  g1.gain.setValueAtTime(volume, audioCtx.currentTime);
+  o1.connect(g1);
+  g1.connect(scMaster);
+  g1.connect(scDelay);
+  g1.connect(scConvolver);
+  o1.start();
+
+  const o2 = audioCtx.createOscillator();
+  const g2 = audioCtx.createGain();
+  o2.type = waveform2;
+  o2.frequency.value = midiToFreq(midi2);
+  g2.gain.setValueAtTime(volume, audioCtx.currentTime);
+  o2.connect(g2);
+  g2.connect(scMaster);
+  g2.connect(scDelay);
+  g2.connect(scConvolver);
+  o2.start();
+
+  oscillators[id] = [o1, g1, o2, g2];
+  activeNotes.set(id, [color1, color2]);
+  document.getElementById(id).classList.add('pressed');
+  drawCircles();
+}
+
+function stopDual(id) {
+  const o = oscillators[id];
+  if (o) {
+    o[1].gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+    o[0].stop(audioCtx.currentTime + 0.1);
+    o[3].gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+    o[2].stop(audioCtx.currentTime + 0.1);
+  }
+  delete oscillators[id];
+  activeNotes.delete(id);
+  const div = document.getElementById(id);
+  if (div) div.classList.remove('pressed');
+  drawCircles();
+}
+
+for (let row = 0; row < 25; row++) {
+  for (let col = 0; col < 25; col++) {
+    const midi1 = 62 + (24 - row);
+    const midi2 = 62 + col;
+    const note1 = midiToNoteName(midi1);
+    const note2 = midiToNoteName(midi2);
+    const id = `cell-${row}-${col}`;
+    const root1 = note1.replace(/[0-9]/g, '');
+    const root2 = note2.replace(/[0-9]/g, '');
+    const color1 = noteToColor[root1];
+    const color2 = noteToColor[root2];
+    const blend = blendColors([color1, color2], root1, root2);
+
+    const div = document.createElement('div');
+    div.className = 'cell';
+    div.id = id;
+    div.dataset.cellId = id;
+    div.innerText = `${note1} / ${note2}`;
+    div.style.backgroundColor = blend;
+    div.dataset.note1 = root1;
+    div.dataset.note2 = root2;
+    div.dataset.color = blend;
+
+    const hold = () => document.getElementById('holdToggle').checked;
+    div.onmousedown = () => {
+      if (hold()) {
+        if (activeNotes.has(id)) stopDual(id);
+        else playDual(id, midi1, midi2, color1, color2);
+      } else {
+        playDual(id, midi1, midi2, color1, color2);
+      }
+    };
+    div.onmouseup = () => { if (!hold()) stopDual(id); };
+    div.onmouseleave = () => { if (!hold()) stopDual(id); };
+
+    div.addEventListener('touchstart', e => {
+      e.preventDefault();
+      if (hold()) {
+        if (activeNotes.has(id)) stopDual(id);
+        else playDual(id, midi1, midi2, color1, color2);
+      } else {
+        playDual(id, midi1, midi2, color1, color2);
+      }
+    });
+
+    div.addEventListener('touchend', e => {
+      e.preventDefault();
+      if (!hold()) stopDual(id);
+    });
+
+    grid.appendChild(div);
+updateGridColors();
+  }
+}
+
+
+
+
+let currentTouchTargets = {};
+
+
+
+document.addEventListener('touchmove', e => {
+  for (const touch of e.touches) {
+    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (!element || !element.classList.contains('cell')) continue;
+
+    const note1 = element.dataset.note1;
+    const note2 = element.dataset.note2;
+    if (!enabledNotes[note1] || !enabledNotes[note2]) continue;
+
+    const currentTarget = currentTouchTargets[touch.identifier];
+    if (element !== currentTarget) {
+      if (currentTarget && currentTarget.dataset.cellId) {
+        stopDual(currentTarget.dataset.cellId);
+      }
+      currentTouchTargets[touch.identifier] = element;
+
+      if (element.dataset.cellId && !activeNotes.has(element.dataset.cellId)) {
+        const id = element.dataset.cellId;
+        const [row, col] = id.split('-').slice(1).map(Number);
+        const midi1 = 62 + (24 - row);
+        const midi2 = 62 + col;
+        const note1 = midiToNoteName(midi1);
+        const note2 = midiToNoteName(midi2);
+        const root1 = note1.replace(/[0-9]/g, '');
+        const root2 = note2.replace(/[0-9]/g, '');
+        const color1 = noteToColor[root1];
+        const color2 = noteToColor[root2];
+        playDual(id, midi1, midi2, color1, color2);
+      }
+    }
+  }
+});
+
+
+
+document.addEventListener('touchend', () => {
+  try {
+    if (typeof currentTouchTargets !== 'undefined' && currentTouchTargets) {
+      for (const k of Object.keys(currentTouchTargets)) {
+        const t = currentTouchTargets[k];
+        if (t && t.dataset && t.dataset.cellId) { try { stopDual(t.dataset.cellId); } catch (_) {} }
+        delete currentTouchTargets[k];
+      }
+    }
+  } catch (_) {}
+});
+
+
+let touchMap = new Map();
+
+
+
+document.addEventListener('touchmove', e => {
+  for (const touch of e.touches) {
+    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (!element || !element.classList.contains('cell')) continue;
+
+    const note1 = element.dataset.note1;
+    const note2 = element.dataset.note2;
+    if (!enabledNotes[note1] || !enabledNotes[note2]) continue;
+
+    const currentTarget = currentTouchTargets[touch.identifier];
+    if (element !== currentTarget) {
+      if (currentTarget && currentTarget.dataset.cellId) {
+        stopDual(currentTarget.dataset.cellId);
+      }
+      currentTouchTargets[touch.identifier] = element;
+
+      if (element.dataset.cellId && !activeNotes.has(element.dataset.cellId)) {
+        const id = element.dataset.cellId;
+        const [row, col] = id.split('-').slice(1).map(Number);
+        const midi1 = 62 + (24 - row);
+        const midi2 = 62 + col;
+        const note1 = midiToNoteName(midi1);
+        const note2 = midiToNoteName(midi2);
+        const root1 = note1.replace(/[0-9]/g, '');
+        const root2 = note2.replace(/[0-9]/g, '');
+        const color1 = noteToColor[root1];
+        const color2 = noteToColor[root2];
+        playDual(id, midi1, midi2, color1, color2);
+      }
+    }
+  }
+});
+
+
+
+document.addEventListener('touchend', e => {
+  for (const touch of e.changedTouches) {
+    const element = touchMap.get(touch.identifier);
+    if (element && element.dataset.cellId) {
+      stopDual(element.dataset.cellId);
+    }
+    touchMap.delete(touch.identifier);
+  }
+});
+
+
+let zoomLevel = 1;
+let touchEnabled = true;
+
+function zoomIn() {
+  zoomLevel *= 1.1;
+  document.getElementById('grid').style.transform = 'scale(' + zoomLevel + ')';
+}
+function zoomOut() {
+  zoomLevel /= 1.1;
+  document.getElementById('grid').style.transform = 'scale(' + zoomLevel + ')';
+}
+function resetZoom() {
+  zoomLevel = 1;
+  document.getElementById('grid').style.transform = 'scale(1)';
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+
+  const harmonicShadingToggle = document.getElementById("harmonicShadingToggle");
+  if (harmonicShadingToggle) {
+    harmonicShadingToggle.addEventListener("change", () => {
+      harmonicShadingEnabled = harmonicShadingToggle.checked;
+      updateGridColors();
+    });
+  }
+
+  const toggle = document.getElementById("touchToggle");
+
+  toggle.addEventListener("click", () => {
+    touchEnabled = !touchEnabled;
+    toggle.textContent = "Touch: " + (touchEnabled ? "ON" : "OFF");
+
+    document.querySelectorAll(".cell").forEach(cell => {
+      cell.style.pointerEvents = touchEnabled ? "auto" : "none";
+    });
+
+    if (touchEnabled) {
+      
+
+document.addEventListener('touchmove', e => {
+  for (const touch of e.touches) {
+    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (!element || !element.classList.contains('cell')) continue;
+
+    const note1 = element.dataset.note1;
+    const note2 = element.dataset.note2;
+    if (!enabledNotes[note1] || !enabledNotes[note2]) continue;
+
+    const currentTarget = currentTouchTargets[touch.identifier];
+    if (element !== currentTarget) {
+      if (currentTarget && currentTarget.dataset.cellId) {
+        stopDual(currentTarget.dataset.cellId);
+      }
+      currentTouchTargets[touch.identifier] = element;
+
+      if (element.dataset.cellId && !activeNotes.has(element.dataset.cellId)) {
+        const id = element.dataset.cellId;
+        const [row, col] = id.split('-').slice(1).map(Number);
+        const midi1 = 62 + (24 - row);
+        const midi2 = 62 + col;
+        const note1 = midiToNoteName(midi1);
+        const note2 = midiToNoteName(midi2);
+        const root1 = note1.replace(/[0-9]/g, '');
+        const root2 = note2.replace(/[0-9]/g, '');
+        const color1 = noteToColor[root1];
+        const color2 = noteToColor[root2];
+        playDual(id, midi1, midi2, color1, color2);
+      }
+    }
+  }
+});
+
+
+      document.addEventListener("touchend", handleTouchEnd);
+    } else {
+      document.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("touchend", handleTouchEnd);
+    }
+  });
+
+  
+
+document.addEventListener('touchmove', e => {
+  for (const touch of e.touches) {
+    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (!element || !element.classList.contains('cell')) continue;
+
+    const note1 = element.dataset.note1;
+    const note2 = element.dataset.note2;
+    if (!enabledNotes[note1] || !enabledNotes[note2]) continue;
+
+    const currentTarget = currentTouchTargets[touch.identifier];
+    if (element !== currentTarget) {
+      if (currentTarget && currentTarget.dataset.cellId) {
+        stopDual(currentTarget.dataset.cellId);
+      }
+      currentTouchTargets[touch.identifier] = element;
+
+      if (element.dataset.cellId && !activeNotes.has(element.dataset.cellId)) {
+        const id = element.dataset.cellId;
+        const [row, col] = id.split('-').slice(1).map(Number);
+        const midi1 = 62 + (24 - row);
+        const midi2 = 62 + col;
+        const note1 = midiToNoteName(midi1);
+        const note2 = midiToNoteName(midi2);
+        const root1 = note1.replace(/[0-9]/g, '');
+        const root2 = note2.replace(/[0-9]/g, '');
+        const color1 = noteToColor[root1];
+        const color2 = noteToColor[root2];
+        playDual(id, midi1, midi2, color1, color2);
+      }
+    }
+  }
+});
+
+
+  document.addEventListener("touchend", handleTouchEnd);
+});
+
+const handleTouchMove = (e) => {
+  for (const touch of e.touches) {
+    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (!element || !element.classList.contains('cell')) continue;
+    const currentId = touchMap.get(touch.identifier);
+    if (element !== currentId) {
+      if (currentId && currentId.dataset.cellId) {
+        stopDual(currentId.dataset.cellId);
+      }
+      touchMap.set(touch.identifier, element);
+      if (element.dataset.cellId && !activeNotes.has(element.dataset.cellId)) {
+        const id = element.dataset.cellId;
+        const [row, col] = id.split('-').slice(1).map(Number);
+        const midi1 = 62 + (24 - row);
+        const midi2 = 62 + col;
+        const note1 = midiToNoteName(midi1);
+        const note2 = midiToNoteName(midi2);
+        const root1 = note1.replace(/[0-9]/g, '');
+        const root2 = note2.replace(/[0-9]/g, '');
+        const color1 = noteToColor[root1];
+        const color2 = noteToColor[root2];
+        playDual(id, midi1, midi2, color1, color2);
+      }
+    }
+  }
+};
+
+const handleTouchEnd = (e) => {
+  for (const touch of e.changedTouches) {
+    const element = touchMap.get(touch.identifier);
+    if (element && element.dataset.cellId) {
+      stopDual(element.dataset.cellId);
+    }
+    touchMap.delete(touch.identifier);
+  }
+};
+
+
+document.addEventListener('touchend', e => {
+  for (const touch of e.changedTouches) {
+    const target = currentTouchTargets[touch.identifier];
+    if (target && target.dataset.cellId) {
+      stopDual(target.dataset.cellId);
+      delete currentTouchTargets[touch.identifier];
+    }
+  }
+});
+
+document.addEventListener('touchcancel', e => {
+  for (const touch of e.changedTouches) {
+    const target = currentTouchTargets[touch.identifier];
+    if (target && target.dataset.cellId) {
+      stopDual(target.dataset.cellId);
+      delete currentTouchTargets[touch.identifier];
+    }
+  }
+});
+
+</script>
+
+
+  <div id="touchStateLabel" style="cursor:pointer;">Touch: ON</div>
+</div>
+
+
+<script>
+let octaveOffset = 0;
+
+function shiftOctave(direction) {
+  octaveOffset += direction;
+  updateGridLabels();
+  clearAllNotes();
+}
+
+function updateGridLabels() {
+  document.querySelectorAll(".cell").forEach(cell => {
+    const [_, row, col] = cell.dataset.cellId.split('-').map(Number);
+    const midi1 = 62 + (24 - row) + (octaveOffset * 12);
+    const midi2 = 62 + col + (octaveOffset * 12);
+    const note1 = midiToNoteName(midi1);
+    const note2 = midiToNoteName(midi2);
+    cell.textContent = note1 + '\n' + note2;
+  });
+}
+
+function clearAllNotes() {
+  activeNotes.forEach(cellId => {
+    stopDual(cellId);
+  });
+  activeNotes.clear();
+}
+
+document.addEventListener('touchend', e => {
+  for (const touch of e.changedTouches) {
+    const target = currentTouchTargets[touch.identifier];
+    if (target && target.dataset.cellId) {
+      stopDual(target.dataset.cellId);
+      delete currentTouchTargets[touch.identifier];
+    }
+  }
+});
+
+document.addEventListener('touchcancel', e => {
+  for (const touch of e.changedTouches) {
+    const target = currentTouchTargets[touch.identifier];
+    if (target && target.dataset.cellId) {
+      stopDual(target.dataset.cellId);
+      delete currentTouchTargets[touch.identifier];
+    }
+  }
+});
+
+</script>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+  const harmonicShadingToggle = document.getElementById("harmonicShadingToggle");
+  if (harmonicShadingToggle) {
+    harmonicShadingToggle.addEventListener("change", () => {
+      harmonicShadingEnabled = harmonicShadingToggle.checked;
+      updateGridColors();
+    });
+  }
+
+  const minusBtn = document.createElement("button");
+  minusBtn.textContent = "– Oct";
+  minusBtn.style.position = "fixed";
+  minusBtn.style.top = "10px";
+  minusBtn.style.right = "100px";
+  minusBtn.style.zIndex = "9999";
+  minusBtn.style.padding = "5px 10px";
+  minusBtn.style.fontSize = "14px";
+  minusBtn.style.borderRadius = "6px";
+  minusBtn.style.background = "#333";
+  minusBtn.style.color = "white";
+  minusBtn.style.border = "1px solid #666";
+  minusBtn.onclick = () => shiftOctave(-1);
+
+  const plusBtn = document.createElement("button");
+  plusBtn.textContent = "+ Oct";
+  plusBtn.style.position = "fixed";
+  plusBtn.style.top = "10px";
+  plusBtn.style.right = "30px";
+  plusBtn.style.zIndex = "9999";
+  plusBtn.style.padding = "5px 10px";
+  plusBtn.style.fontSize = "14px";
+  plusBtn.style.borderRadius = "6px";
+  plusBtn.style.background = "#333";
+  plusBtn.style.color = "white";
+  plusBtn.style.border = "1px solid #666";
+  plusBtn.onclick = () => shiftOctave(1);
+
+  document.body.appendChild(minusBtn);
+  document.body.appendChild(plusBtn);
+});
+
+document.addEventListener('touchend', e => {
+  for (const touch of e.changedTouches) {
+    const target = currentTouchTargets[touch.identifier];
+    if (target && target.dataset.cellId) {
+      stopDual(target.dataset.cellId);
+      delete currentTouchTargets[touch.identifier];
+    }
+  }
+});
+
+document.addEventListener('touchcancel', e => {
+  for (const touch of e.changedTouches) {
+    const target = currentTouchTargets[touch.identifier];
+    if (target && target.dataset.cellId) {
+      stopDual(target.dataset.cellId);
+      delete currentTouchTargets[touch.identifier];
+    }
+  }
+});
+
+</script>
+
+
+<!-- Note Filter UI -->
+
+</div>
+
+
+
+  <div>
+    <label><input type="checkbox" id="delayToggle" checked> Delay</label>
+    <label style="margin-left: 8px;">Time:</label>
+    <input id="delayTimeControl" type="range" min="0" max="1" step="0.01" value="0.25" style="width: 90px;">
+    <label style="margin-left: 8px;">Amount:</label>
+    <input id="delayAmountControl" type="range" min="0" max="1" step="0.01" value="0.4" style="width: 90px;">
+  </div>
+  <div style="margin-top: 160px;">
+    <label style="margin-left: 120px;">Feedback:</label>
+    <input id="delayFeedbackControl" type="range" min="0" max="0.95" step="0.01" value="0.3" style="width: 100px;">
+  </div>
+</div>
+
+
+<script>
+
+// Basic FX Setup
+const masterGain = audioCtx.createGain();
+masterGain.connect(audioCtx.destination);
+
+const delayNode = audioCtx.createDelay();
+const delayGain = audioCtx.createGain();
+const delayFeedback = audioCtx.createGain();
+
+delayNode.connect(delayFeedback).connect(delayNode);
+delayNode.connect(delayGain).connect(masterGain);
+
+const reverbGain = audioCtx.createGain();
+const convolver = audioCtx.createConvolver();
+const reverbBuffer = audioCtx.createBuffer(2, audioCtx.sampleRate * 3, audioCtx.sampleRate);
+for (let c = 0; c < 2; c++) {
+  const chan = reverbBuffer.getChannelData(c);
+  for (let i = 0; i < chan.length; i++) {
+    chan[i] = (Math.random() * 2 - 1) * (1 - i / chan.length);
+  }
+}
+convolver.buffer = reverbBuffer;
+convolver.connect(reverbGain).connect(masterGain);
+
+function updateFX() {
+  const delayOn = document.getElementById('delayToggle').checked;
+  const delayTime = parseFloat(document.getElementById('delayTimeControl').value);
+  const delayAmount = parseFloat(document.getElementById('delayAmountControl').value);
+  const delayFB = parseFloat(document.getElementById('delayFeedbackControl').value);
+
+  delayNode.delayTime.value = delayTime;
+  delayGain.gain.value = delayOn ? delayAmount : 0;
+  delayFeedback.gain.value = delayOn ? delayFB : 0;
+
+  const reverbOn = document.getElementById('reverbToggle').checked;
+  const reverbLevel = parseFloat(document.getElementById('reverbControl').value);
+  reverbGain.gain.value = reverbOn ? reverbLevel : 0;
+
+  const roomSize = parseFloat(document.getElementById('roomSizeControl').value);
+  const newBuffer = audioCtx.createBuffer(2, audioCtx.sampleRate * roomSize * 3, audioCtx.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    let chan = newBuffer.getChannelData(c);
+    for (let i = 0; i < chan.length; i++) {
+      chan[i] = (Math.random() * 2 - 1) * (1 - i / chan.length);
+    }
+  }
+  convolver.buffer = newBuffer;
+}
+['delayToggle','delayTimeControl','delayAmountControl','delayFeedbackControl','reverbToggle','reverbControl','roomSizeControl']
+.forEach(id => document.getElementById(id).addEventListener('input', updateFX));
+
+updateFX();
+
+// Modified playDual to use FX routing
+playDual = function(id, midi1, midi2, color1, color2) {
+  const note1name = getNoteName(midi1);
+  const note2name = getNoteName(midi2);
+  if (!enabledNotes[note1name] || !enabledNotes[note2name]) return;
+
+  midi1 += (octaveOffset * 12);
+  midi2 += (octaveOffset * 12);
+  const waveform1 = document.getElementById('waveform1').value;
+  const waveform2 = document.getElementById('waveform2').value;
+  const volume = parseFloat(document.getElementById('volume').value);
+
+  const o1 = audioCtx.createOscillator();
+  const g1 = audioCtx.createGain();
+  o1.type = waveform1;
+  o1.frequency.value = midiToFreq(midi1);
+  g1.gain.setValueAtTime(volume, audioCtx.currentTime);
+  o1.connect(g1);
+  g1.connect(masterGain);
+  g1.connect(delayNode);
+  g1.connect(convolver);
+  o1.start();
+
+  const o2 = audioCtx.createOscillator();
+  const g2 = audioCtx.createGain();
+  o2.type = waveform2;
+  o2.frequency.value = midiToFreq(midi2);
+  g2.gain.setValueAtTime(volume, audioCtx.currentTime);
+  o2.connect(g2);
+  g2.connect(masterGain);
+  g2.connect(delayNode);
+  g2.connect(convolver);
+  o2.start();
+
+  oscillators[id] = [o1, g1, o2, g2];
+  activeNotes.set(id, [color1, color2]);
+  document.getElementById(id).classList.add('pressed');
+  drawCircles();
+}
+// FX script to be added in next step
+
+document.addEventListener("DOMContentLoaded", () => {
+
+  const harmonicShadingToggle = document.getElementById("harmonicShadingToggle");
+  if (harmonicShadingToggle) {
+    harmonicShadingToggle.addEventListener("change", () => {
+      harmonicShadingEnabled = harmonicShadingToggle.checked;
+      updateGridColors();
+    });
+  }
+
+  const toggle = document.getElementById("touchToggle");
+  if (toggle) {
+    toggle.checked = true;
+    toggle.addEventListener("change", () => {
+      touchEnabled = toggle.checked;
+      document.querySelectorAll(".cell").forEach(cell => {
+        cell.style.pointerEvents = touchEnabled ? "auto" : "none";
+      });
+      toggle.parentElement.style.color = touchEnabled ? "#0f0" : "#f33";
+    });
+  }
+});
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const shadingSlider = document.getElementById("shadingIntensity");
+  if (shadingSlider) {
+    shadingSlider.addEventListener("input", () => {
+      harmonicShadingStrength = parseFloat(shadingSlider.value);
+      updateGridColors();
+    });
+  }
+});
+</script>
+
+<style>
+html,body{-webkit-text-size-adjust:none !important;text-size-adjust:none !important;}
+:root{--cell:60px}
+#grid{grid-template-columns:repeat(25,var(--cell)) !important;width:max-content;margin:0 auto !important;transform:none !important;}
+.cell{width:var(--cell) !important;height:var(--cell) !important;font-size:calc(var(--cell)*0.17) !important;line-height:1.1;overflow:hidden;}
+#gridWrapper{box-sizing:border-box;padding:16px;}
+#gridWrapper.fit{overflow:hidden !important;display:flex !important;align-items:center;justify-content:center;}
+#gridWrapper.fit.tall{overflow:auto !important;}
+#gridWrapper.fit{justify-content:flex-start !important;}
+#gridWrapper.fit #grid{margin:0 auto !important;}
+#gridWrapper{padding:0 !important;}
+#grid{padding:0 !important;}
+#gridWrapper.fit{padding:0 !important;}
+#gridWrapper.fit #grid{padding:0 !important;}
+#gridWrapper.fit{flex-direction:column !important;gap:8px;}
+#gridWrapper.fit #grid{flex:0 0 auto !important;}
+#gridWrapper.fit canvas#bgCanvas{max-width:88vw !important;max-height:26vh !important;width:auto !important;height:auto !important;}
+canvas#bgCanvas{display:none !important;}
+#fitSizeRow{display:none;}
+#gridWrapper.fit ~ * #fitSizeRow, .fitOnly{display:none;}
+body.fitting #fitSizeRow, body.fitting .fitOnly{display:flex !important;}
+body.fitting #topMenu{max-height:42vh;overflow-y:auto !important;}
+#topMenu{max-height:90vh;overflow-y:auto;}
+</style>
+<script>
+(function(){
+const grid=document.getElementById('grid'),wrap=document.getElementById('gridWrapper'),menu=document.getElementById('topMenu');
+const box=grid.parentElement;
+if(!grid||!wrap)return;
+grid.style.transform='none';
+let zoom=1, touchOn=true, fitPx=60, fitBase=60, userScale=1;
+window.zoomLevel=1;
+function menuH(){return menu?menu.offsetHeight:0}
+function layout(){
+  const mh=menuH();
+  wrap.style.marginTop=mh+'px';
+  wrap.style.height='calc(100vh - '+mh+'px)';
+  wrap.style.height='calc(100dvh - '+mh+'px)';
+  wrap.style.width='100%';
+  const fit=true;
+  document.body.classList.toggle('fitting',fit);
+  wrap.classList.toggle('fit',fit);
+  let px;
+  if(fit){
+    const pad=8;
+    const aw=wrap.clientWidth-pad, ah=wrap.clientHeight-pad;
+    const base=Math.max(8,Math.floor((Math.min(aw,ah)-48)/25));
+    fitPx=base;fitBase=base;
+    px=Math.max(8,Math.floor(base*zoom*userScale));
+    wrap.classList.toggle('tall',px*25>Math.min(aw,ah));
+    if(px*25>Math.min(aw,ah))wrap.style.overflow='auto';else wrap.style.overflow='hidden';
+  }else{
+    px=Math.max(8,Math.round(60*zoom));
+    wrap.style.overflow='auto';
+    wrap.classList.remove('tall');
+  }
+  document.documentElement.style.setProperty('--cell',px+'px');
+  const lbl=document.getElementById('touchStateLabel');
+  if(lbl)lbl.textContent='Touch: '+(touchOn?'ON':'OFF')+' • '+(fit?('fit '+px+'px'):(px+'px'));
+  const fr=document.getElementById('fitSizeRow');
+  if(fr)fr.style.display=fit?'flex':'none';
+}
+window.zoomIn=function(){zoom=Math.min(4,zoom*1.1);window.zoomLevel=zoom;layout();};
+window.zoomOut=function(){zoom=Math.max(0.3,zoom/1.1);window.zoomLevel=zoom;layout();};
+window.resetZoom=function(){zoom=1;userScale=1;window.zoomLevel=1;const sl=document.getElementById('fitSizeSlider');if(sl)sl.value='1';layout();};
+window.requestRelayout=layout;
+window.setTouch=function(on){
+  touchOn=!!on;
+  const cb=document.getElementById('touchToggle');
+  if(cb&&cb.checked!==touchOn)cb.checked=touchOn;
+  try{document.querySelectorAll('.cell').forEach(function(c){c.style.pointerEvents='auto';});}catch(_){}
+  layout();
+};
+let pinching=false,pinchD0=0,pinchZ0=1;
+function pinchDist(t){return Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);}
+function stopCellAt(x,y){const el=document.elementFromPoint(x,y);const c=el&&el.closest?el.closest('.cell'):null;if(c&&c.dataset.cellId&&typeof stopDual==='function'){try{stopDual(c.dataset.cellId);}catch(_){}}}
+window.addEventListener('touchstart',function(e){
+  if(touchOn)return;
+  if(e.touches.length>=2){
+    pinching=true;pinchD0=pinchDist(e.touches);pinchZ0=zoom;
+    for(const t of e.touches)stopCellAt(t.clientX,t.clientY);
+    e.preventDefault();e.stopPropagation();
+  }
+},true);
+window.addEventListener('touchmove',function(e){
+  if(touchOn||!pinching)return;
+  if(e.touches.length>=2){
+    const d=pinchDist(e.touches);
+    if(pinchD0>0&&d>0){zoom=Math.min(4,Math.max(0.3,pinchZ0*d/pinchD0));window.zoomLevel=zoom;layout();}
+    e.preventDefault();e.stopPropagation();
+  }
+},{capture:true,passive:false});
+window.addEventListener('touchend',function(e){
+  if(touchOn)return;
+  if(pinching&&e.touches.length<2){pinching=false;pinchEndT=performance.now();if(e.touches.length===0)e.stopPropagation();}
+},true);
+window.addEventListener('touchcancel',function(){pinching=false;},true);
+let lastTapT=0,lastTapX=0,lastTapY=0,pinchEndT=0;
+window.addEventListener('touchend',function(e){
+  if(touchOn||pinching||e.touches.length!==0||e.changedTouches.length!==1)return;
+  if(performance.now()-pinchEndT<600)return;
+  const t=e.changedTouches[0];
+  const now=performance.now();
+  if(now-lastTapT<300&&Math.hypot(t.clientX-lastTapX,t.clientY-lastTapY)<40){window.resetZoom();}
+  lastTapT=now;lastTapX=t.clientX;lastTapY=t.clientY;
+},true);
+grid.addEventListener('dblclick',function(){if(!touchOn)window.resetZoom();});
+wrap.addEventListener('wheel',function(e){
+  if(touchOn)return;
+  if(e.ctrlKey){e.preventDefault();zoom=Math.min(4,Math.max(0.3,zoom*(e.deltaY<0?1.08:0.93)));window.zoomLevel=zoom;layout();}
+},{passive:false});
+['touchstart','touchmove','touchend','touchcancel'].forEach(t=>{
+  document.addEventListener(t,function(e){
+    if(touchOn||pinching)return;
+    const el=e.target&&e.target.closest?e.target.closest('.cell'):null;
+    if(el){e.stopPropagation();}
+  },true);
+});
+function bindToggle(){
+  const cb=document.getElementById('touchToggle');
+  if(cb&&!cb.dataset.fitBound){
+    cb.dataset.fitBound='1';
+    try{cb.checked=true;}catch(_){}
+    cb.addEventListener('change',()=>window.setTouch(cb.checked));
+  }
+  const lbl=document.getElementById('touchStateLabel');
+  if(lbl&&!lbl.dataset.fitBound){lbl.dataset.fitBound='1';lbl.addEventListener('click',()=>window.setTouch(!touchOn));}
+  const bar=document.getElementById('menuBar');
+  if(lbl&&bar&&lbl.parentElement!==bar){bar.appendChild(lbl);lbl.style.cssText='font-size:11px;opacity:0.8;cursor:pointer;white-space:nowrap;';}
+  let sec=document.getElementById('panel-view');
+  if(sec&&!document.getElementById('fitSizeRow')){
+    const r=document.createElement('label');
+    r.id='fitSizeRow';
+    r.style.cssText='display:none;align-items:center;gap:6px;margin-top:4px;';
+    r.innerHTML='Grid size: <input id="fitSizeSlider" type="range" min="0.5" max="2" step="0.01" value="1" style="width:90px;">';
+    sec.appendChild(r);
+    const sl=r.querySelector('input');
+    sl.addEventListener('input',()=>{userScale=parseFloat(sl.value)||1;layout();});
+  }
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{bindToggle();layout();});
+else{bindToggle();layout();}
+window.addEventListener('resize',layout);
+window.addEventListener('load',function(){setTimeout(layout,60);});
+try{if(document.fonts&&document.fonts.ready)document.fonts.ready.then(function(){layout();});}catch(_){}
+try{if(window.visualViewport)window.visualViewport.addEventListener('resize',function(){requestAnimationFrame(layout);});}catch(_){}
+if(window.ResizeObserver){let _lw=0,_lh=0;new ResizeObserver(()=>{const w2=wrap.clientWidth,h2=wrap.clientHeight;if(Math.abs(w2-_lw)<2&&Math.abs(h2-_lh)<2)return;_lw=w2;_lh=h2;requestAnimationFrame(layout);}).observe(wrap);try{new ResizeObserver(()=>{requestAnimationFrame(layout);}).observe(menu);}catch(_){}}
+setTimeout(()=>{try{window.setTouch(true);}catch(_){} layout();},600);setTimeout(layout,300);setTimeout(layout,1500);
+})();
+</script>
+
+<script>
+(function(){
+  const btns=Array.from(document.querySelectorAll('#menuBar [data-panel]'));
+  function relayout(){if(window.requestRelayout)window.requestRelayout();}
+  function closeAll(){document.querySelectorAll('.menuSection.panel').forEach(p=>{p.hidden=true;});btns.forEach(b=>b.classList.remove('active'));}
+  btns.forEach(b=>{
+    b.addEventListener('click',()=>{
+      const p=document.getElementById(b.dataset.panel);
+      if(!p)return;
+      const wasOpen=!p.hidden;
+      closeAll();
+      if(!wasOpen){p.hidden=false;b.classList.add('active');}
+      relayout();
+    });
+  });
+  document.querySelectorAll('[data-close]').forEach(x=>{
+    x.addEventListener('click',()=>{
+      const p=x.closest('.menuSection.panel');
+      if(p)p.hidden=true;
+      const b=p&&document.querySelector('#menuBar [data-panel="'+p.id+'"]');
+      if(b)b.classList.remove('active');
+      relayout();
+    });
+  });
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeAll();relayout();}});
+})();
+</script>
+
+<script>
+(function(){
+  let nextId=20000;
+  const pairs=new Map();
+  function A(){try{return window.SpectraAudio||(window.parent&&window.parent.SpectraAudio);}catch(_){return null;}}
+  function nativeWave(v){return v||"square";}
+  function pushFx(){
+    const a=A();if(!a)return;
+    const pick=(panel,id)=>{try{return document.querySelector(panel+' [id="'+id+'"]')||document.getElementById(id);}catch(_){return document.getElementById(id);}};
+    const dT=pick('#panel-delay','delayToggle'),dTi=pick('#panel-delay','delayTimeControl'),dA=pick('#panel-delay','delayAmountControl'),dF=pick('#panel-delay','delayFeedbackControl');
+    const rT=pick('#panel-reverb','reverbToggle'),rA=pick('#panel-reverb','reverbControl'),rS=pick('#panel-reverb','roomSizeControl');
+    a.applySpecFX({dlyOn:dT?dT.checked:true,dlyAmt:dA?parseFloat(dA.value)||0:0,dlyFb:dF?parseFloat(dF.value)||0:0,dlyTime:dTi?parseFloat(dTi.value)||.25:.25,
+      verbOn:rT?rT.checked:true,verbAmt:rA?parseFloat(rA.value)||0:0,verbRoom:rS?parseFloat(rS.value)||.5:.5});
+  }
+  playDual=function(id,midi1,midi2,color1,color2){
+    const note1name=getNoteName(midi1),note2name=getNoteName(midi2);if(!enabledNotes[note1name]||!enabledNotes[note2name])return;
+    midi1+=(octaveOffset*12);midi2+=(octaveOffset*12);
+    const a=A();if(!a)return;a.ensure();
+    if(pairs.has(id))stopDual(id);
+    const id1=nextId++,id2=nextId++;
+    const gain=Math.max(0,Math.min(1,parseFloat(document.getElementById('volume').value)||0));
+    a.liveSpecStart(id1,midi1,gain,nativeWave(document.getElementById('waveform1').value));
+    a.liveSpecStart(id2,midi2,gain,nativeWave(document.getElementById('waveform2').value));
+    pairs.set(id,[id1,id2]);oscillators[id]=[null,null,null,null];activeNotes.set(id,[color1,color2]);
+    const el=document.getElementById(id);if(el)el.classList.add('pressed');drawCircles();
+  };
+  stopDual=function(id){
+    const a=A(),p=pairs.get(id);if(a&&p){a.liveSpecStop(p[0]);a.liveSpecStop(p[1]);}
+    pairs.delete(id);delete oscillators[id];activeNotes.delete(id);const el=document.getElementById(id);if(el)el.classList.remove('pressed');drawCircles();
+  };
+  function panic(){const a=A();if(a)a.livePanic();pairs.clear();}
+  window.addEventListener('pagehide',panic);window.addEventListener('blur',panic);
+  document.querySelectorAll('#panel-delay input,#panel-reverb input').forEach(el=>{el.addEventListener('input',pushFx);el.addEventListener('change',pushFx);});
+  pushFx();
+})();
+</script>

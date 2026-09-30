@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Spectra</string>
+    <string name="audio_channel_name">Spectra audio engine</string>
+    <string name="audio_notification">Spectra native audio is active</string>
+</resources>
