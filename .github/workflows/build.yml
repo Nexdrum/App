@@ -11,6 +11,8 @@ on:
       - 'mobile-polish-fix.py'
       - 'native-spectrachord.parts/**'
       - 'spectrachord-slide-fix.py'
+      - 'native-nebular.kt.gz.b64'
+      - 'native-nebular-route.py'
       - 'spectra-launcher.webp'
       - '.github/workflows/build.yml'
 
@@ -71,6 +73,11 @@ jobs:
 
           echo "Restoring Spectrachord slide-through-blackout behavior..."
           python3 "$GITHUB_WORKSPACE/spectrachord-slide-fix.py" "$PROJECT_DIR"
+
+          echo "Installing native Compose Nebular instrument..."
+          NEBULAR="$PROJECT_DIR/app/src/main/java/com/sonolume/spectra/ui/NativeNebular.kt"
+          base64 -d "$GITHUB_WORKSPACE/native-nebular.kt.gz.b64" | gzip -dc > "$NEBULAR"
+          python3 "$GITHUB_WORKSPACE/native-nebular-route.py" "$PROJECT_DIR"
 
           echo "Installing final Spectra launcher icon..."
           ICON_RES="$PROJECT_DIR/app/src/main/res"
