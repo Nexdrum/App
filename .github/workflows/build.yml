@@ -1,24 +1,13 @@
 name: Build Spectra Android APK
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
   push:
-    paths:
-      - 'Spectra-Android-Native.zip'
-      - 'compose-compile-fix.patch'
-      - 'compact-ui-fix.py'
-      - 'layout-behavior-fix.py'
-      - 'mobile-polish-fix.py'
-      - 'native-spectrachord.parts/**'
-      - 'spectrachord-slide-fix.py'
-      - 'native-nebular.parts/**'
-      - 'native-nebular-route.py'
-      - 'native-nebular-compile-fix.py'
-      - 'native-nebular-final.b64'
-      - 'native-nexdrum.kt.gz.b64'
-      - 'native-nexdrum-route.py'
-      - 'spectra-launcher.webp'
-      - '.github/workflows/build.yml'
+    branches:
+      - finalized-source
 
 jobs:
   build:
@@ -28,67 +17,42 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Unpack Spectra Android project
+      - name: Unpack and finalize Spectra source
         id: unpack
         shell: bash
         run: |
           set -euo pipefail
 
           ZIP="Spectra-Android-Native.zip"
-
-          if [ ! -f "$ZIP" ]; then
-            echo "Could not find $ZIP in the repository root."
-            exit 1
-          fi
-
           rm -rf _spectra_build
           mkdir -p _spectra_build
           unzip -q "$ZIP" -d _spectra_build
 
           PROJECT_DIR="$(find _spectra_build -type f -name settings.gradle.kts -printf '%h\n' | head -n 1)"
+          test -n "$PROJECT_DIR"
 
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "Could not find settings.gradle.kts inside the ZIP."
-            exit 1
-          fi
-
-          PATCH="$GITHUB_WORKSPACE/compose-compile-fix.patch"
-          if [ -f "$PATCH" ]; then
-            echo "Applying Compose compile fixes..."
-            patch --batch -d "$PROJECT_DIR" -p2 < "$PATCH"
-          fi
+          patch --batch -d "$PROJECT_DIR" -p2 < "$GITHUB_WORKSPACE/compose-compile-fix.patch"
 
           PIANO_ROLL="$PROJECT_DIR/app/src/main/java/com/sonolume/spectra/ui/PianoRoll.kt"
           sed -i 's/hScroll\.scrollBy(dx \/ n)/hScroll.dispatchRawDelta(dx \/ n)/' "$PIANO_ROLL"
           sed -i 's/vScroll\.scrollBy(dy \/ n)/vScroll.dispatchRawDelta(dy \/ n)/' "$PIANO_ROLL"
 
-          echo "Applying compact phone UI and pitch-grid colors..."
           python3 "$GITHUB_WORKSPACE/compact-ui-fix.py" "$PROJECT_DIR"
-
-          echo "Restoring sticky transport/grid behavior..."
           python3 "$GITHUB_WORKSPACE/layout-behavior-fix.py" "$PROJECT_DIR"
-
-          echo "Applying final phone layout polish..."
           python3 "$GITHUB_WORKSPACE/mobile-polish-fix.py" "$PROJECT_DIR"
 
-          echo "Installing native Compose Spectrachord instrument..."
           INSTRUMENTS="$PROJECT_DIR/app/src/main/java/com/sonolume/spectra/ui/Instruments.kt"
           cat "$GITHUB_WORKSPACE"/native-spectrachord.parts/*.b64 | base64 -d | gzip -dc > "$INSTRUMENTS"
-
-          echo "Restoring Spectrachord slide-through-blackout behavior..."
           python3 "$GITHUB_WORKSPACE/spectrachord-slide-fix.py" "$PROJECT_DIR"
 
-          echo "Installing restored native Compose Nebular instrument..."
           NEBULAR="$PROJECT_DIR/app/src/main/java/com/sonolume/spectra/ui/NativeNebular.kt"
           base64 -d "$GITHUB_WORKSPACE/native-nebular-final.b64" | gzip -dc > "$NEBULAR"
           python3 "$GITHUB_WORKSPACE/native-nebular-route.py" "$PROJECT_DIR"
 
-          echo "Installing native Compose Nexdrum instrument..."
           NEXDRUM="$PROJECT_DIR/app/src/main/java/com/sonolume/spectra/ui/NativeNexdrum.kt"
           base64 -d "$GITHUB_WORKSPACE/native-nexdrum.kt.gz.b64" | gzip -dc > "$NEXDRUM"
           python3 "$GITHUB_WORKSPACE/native-nexdrum-route.py" "$PROJECT_DIR"
 
-          echo "Installing final Spectra launcher icon..."
           ICON_RES="$PROJECT_DIR/app/src/main/res"
           find "$ICON_RES" -type f \( \
             -name 'ic_launcher.xml' -o \
@@ -102,15 +66,7 @@ jobs:
           cp "$GITHUB_WORKSPACE/spectra-launcher.webp" "$ICON_RES/mipmap-nodpi/ic_launcher.webp"
           cp "$GITHUB_WORKSPACE/spectra-launcher.webp" "$ICON_RES/mipmap-nodpi/ic_launcher_round.webp"
 
-          echo "Found Android project at: $PROJECT_DIR"
           echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-
-      - name: Upload finalized source tree
-        uses: actions/upload-artifact@v4
-        with:
-          name: Spectra-Finalized-Source
-          path: ${{ steps.unpack.outputs.project_dir }}
-          if-no-files-found: error
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -137,14 +93,103 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build debug APK
+      - name: Build finalized source before promotion
         shell: bash
         run: |
           gradle -p "${{ steps.unpack.outputs.project_dir }}" :app:assembleDebug --stacktrace
 
-      - name: Upload APK
+      - name: Upload verified APK
         uses: actions/upload-artifact@v4
         with:
           name: Spectra-Android-debug
           path: ${{ steps.unpack.outputs.project_dir }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Promote finalized project into repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT_DIR="${{ steps.unpack.outputs.project_dir }}"
+
+          cat > /tmp/direct-build.yml <<'EOF'
+          name: Build Spectra Android APK
+
+          on:
+            workflow_dispatch:
+            push:
+              paths:
+                - 'app/**'
+                - '*.gradle.kts'
+                - 'gradle.properties'
+                - '.github/workflows/build.yml'
+
+          jobs:
+            build:
+              runs-on: ubuntu-latest
+              steps:
+                - name: Check out repository
+                  uses: actions/checkout@v4
+
+                - name: Set up Java 17
+                  uses: actions/setup-java@v4
+                  with:
+                    distribution: temurin
+                    java-version: '17'
+
+                - name: Set up Android SDK
+                  uses: android-actions/setup-android@v4
+                  with:
+                    packages: 'platform-tools'
+
+                - name: Install Android SDK, NDK, and CMake
+                  shell: bash
+                  run: |
+                    sdkmanager \
+                      "platforms;android-35" \
+                      "build-tools;35.0.0" \
+                      "ndk;27.2.12479018" \
+                      "cmake;3.22.1"
+
+                - name: Set up Gradle 8.9
+                  uses: gradle/actions/setup-gradle@v4
+                  with:
+                    gradle-version: '8.9'
+
+                - name: Build debug APK
+                  shell: bash
+                  run: gradle -p . :app:assembleDebug --stacktrace
+
+                - name: Upload APK
+                  uses: actions/upload-artifact@v4
+                  with:
+                    name: Spectra-Android-debug
+                    path: app/build/outputs/apk/debug/app-debug.apk
+                    if-no-files-found: error
+          EOF
+
+          mkdir -p /tmp/spectra-final
+          rsync -a \
+            --exclude '.gradle/' \
+            --exclude '.idea/' \
+            --exclude 'local.properties' \
+            --exclude 'app/build/' \
+            --exclude 'app/.cxx/' \
+            "$PROJECT_DIR"/ /tmp/spectra-final/
+
+          find . -mindepth 1 -maxdepth 1 \
+            ! -name '.git' \
+            ! -name '.github' \
+            ! -name '_spectra_build' \
+            -exec rm -rf {} +
+
+          rsync -a /tmp/spectra-final/ ./
+          rm -rf _spectra_build
+          rm -rf .github/workflows
+          mkdir -p .github/workflows
+          cp /tmp/direct-build.yml .github/workflows/build.yml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Finalize Spectra as direct Android source tree"
+          git push origin HEAD:finalized-source
